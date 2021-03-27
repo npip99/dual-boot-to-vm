@@ -1,14 +1,21 @@
 # From Dual-Boot, to VM
 This repository allows an Ubuntu host to access a Dual-Booted Windows partition via a VM
 
-## Usage
+## Setup
 
 In order to setup this repository, run the following:
 
 ```
-./setup_1.sh # Required a reboot at the end of the script
+./setup_1.sh # Requires a reboot at the end of the script
+```
+
+After you reboot, run
+
+```
 ./setup_2.sh
 ```
+
+## Usage
 
 Now, if you want to run your VM, run
 
