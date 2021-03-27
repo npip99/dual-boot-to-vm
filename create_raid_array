@@ -1,0 +1,46 @@
+#!/bin/bash
+set -e
+
+if [[ "$EUID" != "0" ]]; then
+  echo "Must be run as root!"
+  exit 1
+fi
+
+if [[ -b /dev/md0 ]]; then
+  echo "Error: Called $0, but /dev/md0 already exists!"
+  exit 1
+fi
+
+if [[ ! -f efi1 ]]; then
+  echo "Error: Called $0, but $(cwd)/efi1 doesn't exist!"
+  exit 1
+fi
+if [[ ! -f efi2 ]]; then
+  echo "Error: Called $0, but $(cwd)/efi2 doesn't exist!"
+  exit 1
+fi
+
+# Get the loops associated to that EFI block
+EFI1="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi1\)/\1/p")"
+EFI2="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi2\)/\1/p")"
+
+if [[ -n "$EFI1" || -n "$EFI1" ]]; then
+  echo "EFI1 or EFI2 found: ($EFI1) ($EFI2)"
+  exit 1
+fi
+
+# Setup EFIs as loops
+losetup -f efi1
+losetup -f efi2
+# Get the loops associated to that EFI block
+EFI1="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi1\)/\1/p")"
+EFI2="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi2\)/\1/p")"
+# Get windows partition name
+WIN_PARTITION="$(fdisk -l | grep "Microsoft basic data" | awk '{print $1}')"
+if [[ "$(echo "$WIN_PARTITION" | wc -l)" != "1" ]]; then
+  echo "Could not find a single unique windows partition, found: "
+  echo "$WIN_PARTITION"
+  exit 1
+fi
+# Build a RAID array out of EFI1 / windows partition / EFI2
+mdadm --build --verbose /dev/md0 --chunk=512 --level=linear --raid-devices=3 "$EFI1" "$WIN_PARTITION" "$EFI2"
