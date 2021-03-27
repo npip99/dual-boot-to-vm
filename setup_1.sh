@@ -12,7 +12,26 @@ if [[ "$EUID" != "0" ]]; then
 fi
 
 # Download efi1 and ./vbios_gvt_uefi.rom
+if [[ -e efi1 ]]; then
+  echo "File ./efi1 found, cannot continue!"
+  exit 1
+fi
 curl -L "https://www.dropbox.com/s/gcg735xravwrztl/dual-boot-to-vm.tar.gz?dl=1" | tar -xzv >/dev/null
+
+# ==================================
+# Created shared pulseaudio socket
+# ==================================
+
+PULSEAUDIO_CONFIG="$HOME/.config/pulse/default.pa"
+if [[ -f "$PULSEAUDIO_CONFIG" ]]; then
+  echo "Custom pulseaudio configuration found at $PULSEAUDIO_CONFIG. Please delete it to continue."
+  exit 1
+fi
+cat >~/.config/pulse/default.pa <<EOF
+.include /etc/pulse/default.pa
+load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/shared-pulse-socket
+EOF
+machinectl shell $SUDO_USER@ /bin/systemctl --user restart pulseaudio.service
 
 # ================================
 # Update grub file

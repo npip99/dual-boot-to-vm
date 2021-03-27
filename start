@@ -45,7 +45,7 @@ if [[ "$USE_IGPU" == "true" ]]; then
   MDEV="$MDEV,display=on,x-igd-opregion=on,ramfb=on,driver=vfio-pci-nohotplug,romfile=$IGPU_ROM"
 fi
 
-AUDIO="-device ich9-intel-hda -device hda-micro,audiodev=snd0 -audiodev pa,id=snd0,server=unix:/run/user/$(id -u "$SUDO_USER")/pulse/native"
+AUDIO="-device ich9-intel-hda -device hda-micro,audiodev=snd0 -audiodev pa,id=snd0,server=unix:/tmp/shared-pulse-socket"
 
 # User virt-manager bridge to access the internet
 NIC="-net bridge,br=virbr0 -net nic"
@@ -59,10 +59,11 @@ if [[ -f "./virtio-win-0.1.185.iso" ]]; then
   CDROMS="$CDROMS -cdrom ./virtio-win-0.1.185.iso"
 fi
 
+# -drive file=/dev/md0,media=disk,format=raw \
+
 qemu-system-x86_64 \
   -nodefaults \
   -bios /usr/share/qemu/OVMF.fd \
-  -drive file=/dev/md0,media=disk,format=raw \
   -cpu host -smp 6,sockets=1,cores=3,threads=2 -enable-kvm \
   -m 8G \
   -device virtio-balloon-pci,id=balloon0 \
