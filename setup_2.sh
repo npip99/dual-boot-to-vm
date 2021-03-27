@@ -41,7 +41,8 @@ if [[ -z "$GPU" ]]; then
 fi
 
 # Saving the UUID for future usage
-echo "ls $GPU/devices | grep -o $UUID" >check_gpu.sh
+echo "#!/bin/bash" >check_gpu.sh
+echo "ls $GPU/devices | grep -o $UUID" >>check_gpu.sh
 chmod +x check_gpu.sh
 chown $SUDO_USER check_gpu.sh
 
