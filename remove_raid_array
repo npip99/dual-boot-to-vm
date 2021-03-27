@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+err_report() {
+  echo "Error at $BASH_SOURCE on line $1!"
+}
+trap 'err_report $LINENO' ERR
+
+if [[ "$EUID" != "0" ]]; then
+  echo "Must be run as root!"
+  exit 1
+fi
+
+if [[ -b /dev/md0 ]]; then
+  mdadm --stop /dev/md0
+  EFI1="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi1\)/\1/p")"
+  EFI2="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi2\)/\1/p")"
+  losetup -d "$EFI1"
+  losetup -d "$EFI2"
+fi
+
