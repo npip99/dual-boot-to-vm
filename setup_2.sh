@@ -12,54 +12,24 @@ if [[ "$EUID" != "0" ]]; then
 fi
 cd "$(dirname $([ -L "$BASH_SOURCE" ] && readlink -f "$BASH_SOURCE" || echo "$BASH_SOURCE"))"
 
-# Check for intel when using Nvidia Optimus
-if which prime-select && [[ "$(prime-select query)" != "intel" ]]; then
-  echo "\`prime-select query\` gave \"$(prime-select query)\". It must be \"intel\" for this to work!"
-fi
-
-# ================================
-# Setup Intel vGPU Service
-# ================================
-
-GPU=
-MAX=0
-UUID=$(uuidgen)
-
-# Finding the Intel GPU and choosing the one with highest weight value
-for i in $(find /sys/devices/pci* -name 'mdev_supported_types'); do
-  for y in $(find $i -name 'description'); do
-    WEIGHT=$(cat $y | tail -1 | cut -d ' ' -f 2)
-    if [ $WEIGHT -gt $MAX ]; then
-      GPU=$(echo $y | cut -d '/' -f 1-7)
-    fi
-  done
-done
-
-if [[ -z "$GPU" ]]; then
-  echo "Error: No Intel GPU found"
-  exit 1
-fi
-
-# Saving the UUID for future usage
-echo "#!/bin/bash" >check_gpu.sh
-echo "ls $GPU/devices | grep -o $UUID" >>check_gpu.sh
-chmod +x check_gpu.sh
-chown $SUDO_USER check_gpu.sh
-
+# Parse args
 if [[ "$1" == "--new-efi" ]]; then
   CREATE_NEW_EFI="true"
 else
   CREATE_NEW_EFI="false"
 fi
 
-# Setup virt pci to be automatic
-systemctl start libvirtd.service
-systemctl enable libvirtd.service
+# Check for intel when using Nvidia Optimus
+if which prime-select && [[ "$(prime-select query)" != "intel" ]]; then
+  echo "\`prime-select query\` gave \"$(prime-select query)\". It must be \"intel\" for this to work!"
+fi
 
 # ================================
 # Setup virsh internet Service
 # ================================
 
+systemctl start libvirtd.service
+systemctl enable libvirtd.service
 if ! virsh net-list --all | grep -E 'default(\s+)active'; then
   virsh net-start --network default
 fi
@@ -129,12 +99,7 @@ EOF
   echo ""
   echo "When you're done, shutdown the VM"
   echo ""
-  qemu-system-x86_64 \
-    -bios /usr/share/ovmf/OVMF.fd \
-    -drive file=/dev/md0,media=disk,format=raw \
-    -cpu host -smp 6,sockets=1,cores=3,threads=2 -enable-kvm \
-    -m 8G \
-    -cdrom ./win10.iso -msg timestamp=on
+  ./recovery.sh
 fi
 
 # ==============================================
@@ -144,7 +109,7 @@ fi
 wget "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.185-2/virtio-win.iso" -O ./virtio-win.iso
 echo ""
 echo "VM starting..."
-echo "When this VM starts, in order to activate the internet, please navigate to the virtio mounted CDROM, and double-click virtio-win-gt-x64.msi to install"
+echo "When this VM starts, in order to install the internet drivers, please navigate to the virtio mounted CDROM, and double-click virtio-win-gt-x64.msi to install"
 echo ""
 ./start
 rm ./virtio-win.iso

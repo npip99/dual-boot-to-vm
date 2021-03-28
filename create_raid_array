@@ -10,7 +10,7 @@ if [[ "$EUID" != "0" ]]; then
   exit 1
 fi
 
-if [[ -b /dev/md0 ]]; then
+if [[ -e /dev/md0 ]]; then
   echo "Error: Called $0, but /dev/md0 already exists!"
   exit 1
 fi

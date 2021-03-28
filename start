@@ -1,5 +1,54 @@
 #!/bin/bash
 set -e
+err_report() {
+  echo "Error at $BASH_SOURCE on line $1!"
+  echo "GPU/VGPU_UUID: $GPU / $VGPU_UUID"
+  if [[ -n "$VGPU_UUID" ]]; then
+    echo "Deleting intel vGPU..."
+    delete_intel_vGPU
+  fi
+}
+trap 'err_report $LINENO' ERR
+
+create_intel_vGPU() {
+  GPU=""
+  VGPU_UUID=""
+
+  # Finding the Intel GPU and choosing the one with highest weight value
+  for i in $(find /sys/devices/pci* -name 'mdev_supported_types'); do
+    for y in $(find "$i" -name 'description'); do
+      local WEIGHT=$(cat $y | tail -1 | cut -d ' ' -f 2)
+      if [ "$WEIGHT" -gt "0" ]; then
+        GPU=$(echo $y | cut -d '/' -f 1-7)
+      fi
+    done
+  done
+
+  if [[ -z "$GPU" ]]; then
+    echo "Note: No Intel GPU found" >&2
+    return
+  fi
+
+  # Now that GPU has been set, we can safely set VGPU_UUID
+  VGPU_UUID=$(uuidgen)
+  echo "$VGPU_UUID" > "$GPU/create"
+
+  if ! grep -o "$VGPU_UUID" >/dev/null < <(ls "$GPU/devices"); then
+    echo "Note: Could not create vGPU, $VGPU_UUID not found in $GPU/devices" >&2
+    VGPU_UUID=""
+    GPU=""
+  fi
+}
+
+delete_intel_vGPU() {
+  if [[ -z "$GPU" || -z "$VGPU_UUID" ]]; then
+    echo "Tried to delete vGPU, but invalid GPU,UUID pair: $GPU,$VGPU_UUID" >&2
+    return
+  fi
+  echo "1" > "$GPU/devices/$VGPU_UUID/remove"
+  VGPU_UUID=""
+  GPU=""
+}
 
 # If not already run as sudo, then run as sudo
 if [[ "$EUID" != "0" ]]; then
@@ -8,63 +57,99 @@ if [[ "$EUID" != "0" ]]; then
 fi
 
 # Check for intel when using Nvidia Optimus
-if which prime-select && [[ "$(prime-select query)" != "intel" ]]; then
+if which prime-select >/dev/null && [[ "$(prime-select query)" != "intel" ]]; then
   echo "\`prime-select query\` gave \"$(prime-select query)\". It must be \"intel\" for this to work!"
+  exit 1
 fi
 
 cd "$(dirname $([ -L "$BASH_SOURCE" ] && readlink -f "$BASH_SOURCE" || echo "$BASH_SOURCE"))"
-
-GPU_UUID="$(./check_gpu.sh)"
 
 # Setup /dev/md0 if it hasn't been setup already
 if [[ ! -b /dev/md0 ]]; then
   ./create_raid_array
 fi
 
+# Use virtio (For networking essentially)
 VIRTIO="true"
+
+# Get vGPU VGPU_UUID if any, and mark vGPU desires
 if [[ "$1" == "--no-igpu" ]]; then
-  USE_IGPU="false"
+  USE_VGPU="false"
+  VGPU_UUID=""
 else
-  USE_IGPU="true"
+  USE_VGPU="true"
+  create_intel_vGPU # Sets VGPU_UUID on success
+  # Don't use vGPU is not vGPU VGPU_UUID was found
+  if [[ -z "$VGPU_UUID" ]]; then
+    echo "Could not find vGPU, using software emulated graphics for now"
+    USE_VGPU="false"
+  fi
 fi
 
-if [[ "$USE_IGPU" == "true" ]]; then
+# Pass intel vGPU GVT-g device to the VM if the vGPU VGPU_UUID exists
+if [[ -n "$VGPU_UUID" ]]; then
+  # Mount vGPU
+  MDEV="-device vfio-pci,id=hostdev0,sysfsdev=/sys/bus/mdev/devices/$VGPU_UUID"
+  # If we want to use the vGPU, mount with display=on
+  if [[ "$USE_VGPU" == "true" ]]; then
+    VGPU_ROM="./vbios_gvt_uefi.rom"
+    if [[ -f "$VGPU_ROM" ]]; then
+      MDEV="$MDEV,display=on,x-igd-opregion=on,ramfb=on,driver=vfio-pci-nohotplug,romfile=$VGPU_ROM"
+    else
+      # If we don't have the ROM, then we can still mount the vGPU, but we can't use it
+      echo "Tried to use iGPU, but $VGPU_ROM not found! Defaulting to software emulated graphics"
+      USE_VGPU="false"
+    fi
+  else
+    MDEV="$MDEV,display=off"
+  fi
+else
+  # No vGPU found, so don't mount it
+  MDEV=""
+fi
+
+# No VGA if using vGPU, as the vGPU will be the display device
+# Otherwise, use standard VGA
+if [[ "$USE_VGPU" == "true" ]]; then
   VGA="-vga none -display gtk,gl=on"
 else
-  VGA="-device qxl-vga,id=video0,ram_size=67108864,vram_size=67108864,vram64_size_mb=0,vgamem_mb=16,max_outputs=1"
+  # Use virtio always since it has VGA fallback
+  #VGA="-vga virtio -display gtk"
+  #VGA="-device qxl-vga,id=video0,ram_size=67108864,vram_size=67108864,vram64_size_mb=0,vgamem_mb=16,max_outputs=1"
+  VGA="-display gtk -device VGA,vgamem_mb=32"
 fi
 
-# Pass intel vGPU GVT-g
-MDEV="-device vfio-pci,id=hostdev0,sysfsdev=/sys/bus/mdev/devices/$GPU_UUID"
-if [[ "$USE_IGPU" == "true" ]]; then
-  IGPU_ROM="./vbios_gvt_uefi.rom"
-  if [[ ! -f "$IGPU_ROM" ]]; then
-    echo "Error: Tried to use iGPU, but $IGPU_ROM not found!"
-    exit 1
-  fi
-  MDEV="$MDEV,display=on,x-igd-opregion=on,ramfb=on,driver=vfio-pci-nohotplug,romfile=$IGPU_ROM"
-fi
-
+# Pass audio to the PulseAudio shared-socket
 AUDIO="-device ich9-intel-hda -device hda-micro,audiodev=snd0 -audiodev pa,id=snd0,server=unix:/tmp/shared-pulse-socket"
 
-# User virt-manager bridge to access the internet
+# Use virt-manager bridge to access the internet
 NIC="-net bridge,br=virbr0 -net nic"
 if [[ "$VIRTIO" == "true" ]]; then
   NIC="$NIC,model=virtio"
 fi
 
+# If possible, mount the virtio iso for installing virtio drivers
 CDROMS=""
-if [[ -f "./virtio-win-0.1.185.iso" ]]; then
-  # Used for installing virtio drivers
-  CDROMS="$CDROMS -cdrom ./virtio-win-0.1.185.iso"
+if [[ -f "./virtio-win.iso" ]]; then
+  CDROMS="$CDROMS -cdrom ./virtio-win.iso"
 fi
 
-# -drive file=/dev/md0,media=disk,format=raw \
-
+# Run the emulator
+QEMU_CMD=$(cat <<EOF
 qemu-system-x86_64 \
   -nodefaults \
   -bios /usr/share/qemu/OVMF.fd \
+  -drive file=/dev/md0,media=disk,format=raw \
   -cpu host -smp 6,sockets=1,cores=3,threads=2 -enable-kvm \
   -m 8G \
   -device virtio-balloon-pci,id=balloon0 \
   $VGA $MDEV $AUDIO $NIC $CDROMS -msg timestamp=on
+EOF
+)
+
+echo "$QEMU_CMD"
+$QEMU_CMD
+
+if [[ -n "$VGPU_UUID" ]]; then
+  delete_intel_vGPU
+fi
