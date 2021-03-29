@@ -3,5 +3,6 @@ efi2
 *.tar.gz
 *.rom
 *.iso
+*.conf
 grub_backup.txt
 **/*.swp

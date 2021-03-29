@@ -15,6 +15,14 @@ cd "$(dirname $([ -L "$BASH_SOURCE" ] && readlink -f "$BASH_SOURCE" || echo "$BA
 # Parse args
 if [[ "$1" == "--new-efi" ]]; then
   CREATE_NEW_EFI="true"
+  if [[ ! -f ./win10.iso ]]; then
+    echo "Error: Cannot find win10.iso in $(pwd)"
+    exit 1
+  fi
+  if [[ ! -f ./vbios_gvt_uefi.rom ]]; then
+    echo "Error: Cannot find vbios_gvt_uefi.iso in $(pwd)"
+    exit 1
+  fi
 else
   CREATE_NEW_EFI="false"
 fi
@@ -40,6 +48,7 @@ virsh net-autostart --network default
 # ================================
 
 if [[ "$CREATE_NEW_EFI" == "true" ]]; then
+  # Reset the GPT and EFI partition when creating a new one
   rm efi1
   dd if=/dev/zero of=efi1 bs=1M count=100
 fi
@@ -47,31 +56,47 @@ dd if=/dev/zero of=efi2 bs=1M count=1
 ./create_raid_array
 
 # ================================
-# Format the GPT boot record
+# Format the disk partition table
 # ================================
 
+# Format our partition table
+parted --script /dev/md0 -- \
+  unit s \
+  mktable gpt \
+  mkpart primary fat32 2048 204799 \
+  mkpart primary ntfs 204800 -2049 \
+  set 1 boot on \
+  set 1 esp on \
+  set 2 msftdata on \
+  name 1 EFI \
+  name 2 Windows \
+  quit
+
+# Verify the /dev/md0p2 Windows partition integrity inside of the /dev/md0 disk
+# This ensures that we set up our GPT table in a way that preserves the windows partition entirely
+./verify_raid_array
+
 if [[ "$CREATE_NEW_EFI" == "true" ]]; then
-  parted --script /dev/md0 -- \
-    unit s \
-    mktable gpt \
-    mkpart primary fat32 2048 204799 \
-    mkpart primary ntfs 204800 -2049 \
-    set 1 boot on \
-    set 1 esp on \
-    set 2 msftdata on \
-    name 1 EFI \
-    name 2 Windows \
-    quit
-  ./verify_raid_array
   # Format EFI partition
   mkfs.msdos -F 32 -n EFI /dev/md0p1
+  # Save UUIDs of disk/partition1/partition2
+  DISK_UUID="$(blkid /dev/md0 -s PTUUID -o value)"
+  P1_UUID="$(blkid /dev/md0p1 -s PARTUUID -o value)"
+  P2_UUID="$(blkid /dev/md0p2 -s PARTUUID -o value)"
+  cat >uuid.conf <<EOF
+DISK_UUID=$DISK_UUID
+P1_UUID=$P1_UUID
+P2_UUID=$P2_UUID
+EOF
 else
-  # Adjust size of Windows partition if using cached efi1/2
-  parted --script /dev/md0 -- \
-    unit s \
-    resizepart 2 -2049 \
-    quit
-  ./verify_raid_array
+  # Source {DISK,P1,P2}_UUID variables
+  . uuid.conf
+  # Set our disk / partition UUIDs so that the windows boot loader can use identify them
+  sgdisk /dev/md0 --disk-guid="$DISK_UUID"
+  sgdisk /dev/md0 --partition-guid=1:"$P1_UUID"
+  sgdisk /dev/md0 --partition-guid=2:"$P2_UUID"
+  # uuid.conf is no longer needed
+  rm uuid.conf
 fi
 
 # ==============================================
@@ -102,6 +127,10 @@ EOF
   echo "When you're done, shutdown the VM"
   echo ""
   ./recovery.sh
+  # Create .tar.gz to distribute to other users
+  GZIP=-9 tar -czvf dual-boot-to-vm.tar.gz ./efi1 ./vbios_gvt_uefi.rom ./uuid.conf
+  chown $SUDO_USER:$SUDO_USER ./dual-boot-to-vm.tar.gz
+  rm uuid.conf
 fi
 
 # ==============================================
