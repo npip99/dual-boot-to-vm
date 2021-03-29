@@ -121,7 +121,12 @@ else
 fi
 
 # Pass audio to the PulseAudio shared-socket
-AUDIO="-device ich9-intel-hda -device hda-micro,audiodev=snd0 -audiodev pa,id=snd0,server=unix:/tmp/shared-pulse-socket"
+if [[ -S /tmp/shared-pulse-socket ]]; then
+  AUDIO="-device ich9-intel-hda -device hda-micro,audiodev=snd0 -audiodev pa,id=snd0,server=unix:/tmp/shared-pulse-socket"
+else
+  echo "/tmp/shared-pulse-socket not found, your VM will not have audio"
+  AUDIO=""
+fi
 
 # Use virt-manager bridge to access the internet
 NIC="-net bridge,br=virbr0 -net nic"
