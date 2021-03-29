@@ -66,7 +66,7 @@ echo
 echo "Grub was modified to look like this: "
 echo $(cat /etc/default/grub | grep "GRUB_CMDLINE_LINUX_DEFAULT")
 echo
-echo "Do you want to edit it now to fix anything? Y/n (Say yes if there are any duplicated parameters)"
+echo "Do you want to edit it now to fix anything? Y/n (Say yes if there are any duplicated parameters or the grub config doesn't look right)"
 read YN
 
 if [[ "$YN" =~ ^[yY](es)?$ ]]; then

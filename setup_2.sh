@@ -19,12 +19,14 @@ if [[ "$1" == "--new-efi" ]]; then
     echo "Error: Cannot find win10.iso in $(pwd)"
     exit 1
   fi
-  if [[ ! -f ./vbios_gvt_uefi.rom ]]; then
-    echo "Error: Cannot find vbios_gvt_uefi.iso in $(pwd)"
-    exit 1
-  fi
 else
   CREATE_NEW_EFI="false"
+fi
+
+# Check for missing files
+if [[ ! -f ./vbios_gvt_uefi.rom ]]; then
+  echo "Error: Cannot find vbios_gvt_uefi.rom in $(pwd)"
+  exit 1
 fi
 
 # Check for intel when using Nvidia Optimus
@@ -33,13 +35,29 @@ if which prime-select && [[ "$(prime-select query)" != "intel" ]]; then
 fi
 
 # ================================
+# Create raid array
+# ================================
+
+if [[ "$CREATE_NEW_EFI" == "true" ]]; then
+  # Reset the GPT and EFI partition when creating a new one
+  rm -f efi1
+  dd if=/dev/zero of=efi1 bs=1M count=100
+elif [[ ! -f ./ef1 ]]; then
+  # Verify efi1 exists if we're not making a new efi1
+  echo "Error: Cannot find efi1 in $(pwd)"
+  exit 1
+fi
+dd if=/dev/zero of=efi2 bs=1M count=1
+./create_raid_array
+
+# ================================
 # Setup virsh internet Service
 # ================================
 
 # Allow virbr0 into qemu
 mkdir -p /etc/qemu
 if [[ -f /etc/qemu/bridge.conf ]]; then
-  echo "/etc/qemu/bridge.conf found. Overwriting it, backup can be found at $(pwd)/etc_qemu_bridge.conf.bak"
+  echo "/etc/qemu/bridge.conf found. Overwriting it, but a backup can be found at $(pwd)/etc_qemu_bridge.conf.bak"
   cp /etc/qemu/bridge.conf ./etc_qemu_bridge.conf.bak
 fi
 echo "allow virbr0" >/etc/qemu/bridge.conf
@@ -50,18 +68,6 @@ if ! virsh net-list --all | grep -E 'default(\s+)active'; then
   virsh net-start --network default
 fi
 virsh net-autostart --network default
-
-# ================================
-# Create raid array
-# ================================
-
-if [[ "$CREATE_NEW_EFI" == "true" ]]; then
-  # Reset the GPT and EFI partition when creating a new one
-  rm efi1
-  dd if=/dev/zero of=efi1 bs=1M count=100
-fi
-dd if=/dev/zero of=efi2 bs=1M count=1
-./create_raid_array
 
 # ================================
 # Format the disk partition table
