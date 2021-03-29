@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+err_report() {
+  echo "Error at $BASH_SOURCE on line $1!"
+}
+trap 'err_report $LINENO' ERR
+
+if [[ "$EUID" != "0" ]]; then
+  echo "Must be run as root!"
+  exit 1
+fi
+
+if [[ ! -b /dev/md0 ]]; then
+  echo "Error: Called $0, but /dev/md0 doesn't exist or isn't a block device!"
+  exit 1
+fi
+
+# Get raid partition
+RAID_PARTITION="/dev/md0p2"
+if [[ ! -b "$RAID_PARTITION" ]]; then
+  echo "Error: Called $0, but $RAID_PARTITION doesn't exist or isn't a block device!"
+  exit 1
+fi
+
+# Get windows partition name (Exclude the RAID partition in the search for Microsoft basic data partitions)
+WIN_PARTITION="$(fdisk -l | grep "Microsoft basic data" | awk '{print $1}' | grep -v "$RAID_PARTITION")"
+if [[ "$(echo "$WIN_PARTITION" | wc -l)" != "1" ]]; then
+  echo "Could not find a single unique windows partition, found: "
+  echo "$WIN_PARTITION"
+  exit 1
+fi
+
+P2_SIZE="$(blockdev --getsize64 "$RAID_PARTITION")"
+WIN_SIZE="$(blockdev --getsize64 "$WIN_PARTITION")"
+if [[ "$P2_SIZE" != "$WIN_SIZE" ]]; then
+  echo "Partition size does not match: $P2_SIZE found at $RAID_PARTITION, but $WIN_SIZE expected from a mounted $WIN_PARTITION"
+  exit 1
+fi
+# 10485760 = 10 * 1024 * 1024
+if [[ ! "$P2_SIZE" -gt "10485760" ]]; then
+  echo "Windows partition is too small, only $P2_SIZE bytes, expected at least 10MB"
+  exit 1
+fi
+
+P2_MD5="$(dd if=$RAID_PARTITION bs=1M count=1 &>/dev/null | md5sum | awk '{print $1}')"
+WIN_MD5="$(dd if="$WIN_PARTITION" bs=1M count=1 &>/dev/null | md5sum | awk '{print $1}')"
+
+LAST_P2_MD5="$(dd if=$RAID_PARTITION bs=1M count=1 skip_bytes skip=$(("$P2_SIZE" - 1024 * 1024)) &>/dev/null | md5sum | awk '{print $1}')"
+LAST_WIN_MD5="$(dd if="$WIN_PARTITION" bs=1M count=1 skip_bytes skip=$(("$WIN_SIZE" - 1024 * 1024)) &>/dev/null | md5sum | awk '{print $1}')"
+
+if [[ "$P2_MD5" != "$WIN_MD5" ]]; then
+  echo "First 1MB differs between $RAID_PARTITION and $WIN_PARTITION"
+  exit 1
+fi
+
+if [[ "$LAST_P2_MD5" != "$WIN_MD5" ]]; then
+  echo "Last 1MB differs between $RAID_PARTITION and $WIN_PARTITION"
+  exit 1
+fi
+
+# Exit successfully, all verifications passed!
+

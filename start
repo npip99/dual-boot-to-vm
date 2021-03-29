@@ -68,6 +68,7 @@ cd "$(dirname $([ -L "$BASH_SOURCE" ] && readlink -f "$BASH_SOURCE" || echo "$BA
 if [[ ! -b /dev/md0 ]]; then
   ./create_raid_array
 fi
+./verify_raid_array
 
 # Use virtio (For networking essentially)
 VIRTIO="true"

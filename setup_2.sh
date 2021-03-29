@@ -62,6 +62,7 @@ if [[ "$CREATE_NEW_EFI" == "true" ]]; then
     name 1 EFI \
     name 2 Windows \
     quit
+  ./verify_raid_array
   # Format EFI partition
   mkfs.msdos -F 32 -n EFI /dev/md0p1
 else
@@ -70,6 +71,7 @@ else
     unit s \
     resizepart 2 -2049 \
     quit
+  ./verify_raid_array
 fi
 
 # ==============================================
