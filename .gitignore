@@ -4,5 +4,5 @@ efi2
 *.rom
 *.iso
 *.conf
-grub_backup.txt
+*.bak
 **/*.swp

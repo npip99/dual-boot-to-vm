@@ -36,6 +36,14 @@ fi
 # Setup virsh internet Service
 # ================================
 
+# Allow virbr0 into qemu
+mkdir -p /etc/qemu
+if [[ -f /etc/qemu/bridge.conf ]]; then
+  echo "/etc/qemu/bridge.conf found. Overwriting it, backup can be found at $(pwd)/etc_qemu_bridge.conf.bak"
+  cp /etc/qemu/bridge.conf ./etc_qemu_bridge.conf.bak
+fi
+echo "allow virbr0" >/etc/qemu/bridge.conf
+# Get virbr0 networking device working
 systemctl start libvirtd.service
 systemctl enable libvirtd.service
 if ! virsh net-list --all | grep -E 'default(\s+)active'; then
@@ -91,7 +99,7 @@ EOF
 else
   # Source {DISK,P1,P2}_UUID variables
   . uuid.conf
-  # Set our disk / partition UUIDs so that the windows boot loader can use identify them
+  # Set our disk / partition UUIDs so that the windows boot loader can still identify them
   sgdisk /dev/md0 --disk-guid="$DISK_UUID"
   sgdisk /dev/md0 --partition-guid=1:"$P1_UUID"
   sgdisk /dev/md0 --partition-guid=2:"$P2_UUID"
