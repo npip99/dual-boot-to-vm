@@ -2,6 +2,12 @@
 set -e
 err_report() {
   echo "Error at $BASH_SOURCE on line $1!"
+  if [[ -n "$MADE_EF1" && -n "$EFI1" ]]; then
+    losetup -d "$EFI1"
+  fi
+  if [[ -n "$MADE_EF2" && -n "$EFI2" ]]; then
+    losetup -d "$EFI2"
+  fi
 }
 trap 'err_report $LINENO' ERR
 
@@ -38,7 +44,9 @@ losetup -f efi1
 losetup -f efi2
 # Get the loops associated to that EFI block
 EFI1="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi1\)/\1/p")"
+MADE_EF1=true
 EFI2="$(losetup -a | sed -En "s/(\/dev\/loop[0-9]+):.*\/efi2\)/\1/p")"
+MADE_EF2=true
 # Get windows partition name
 WIN_PARTITION="$(fdisk -l | grep "Microsoft basic data" | awk '{print $1}')"
 if [[ "$(echo "$WIN_PARTITION" | wc -l)" != "1" ]]; then
