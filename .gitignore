@@ -1,7 +1,7 @@
 efi1
 efi2
-check_gpu.sh
 *.tar.gz
 *.rom
 *.iso
+grub_backup.txt
 **/*.swp
