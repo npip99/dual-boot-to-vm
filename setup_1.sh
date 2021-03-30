@@ -93,6 +93,26 @@ EOF
 # Updating initramfs
 update-initramfs -u
 
+# ================================
+# Setup virsh internet Service
+# ================================
+
+# Allow virbr0 as a network bridge for qemu
+mkdir -p /etc/qemu
+if [[ -f /etc/qemu/bridge.conf ]]; then
+  echo "/etc/qemu/bridge.conf found. Overwriting it, but a backup can be found at $(pwd)/etc_qemu_bridge.conf.bak"
+  cp /etc/qemu/bridge.conf ./etc_qemu_bridge.conf.bak
+fi
+echo "allow virbr0" >/etc/qemu/bridge.conf
+# Get virbr0 networking device working
+# Can comment out --start since we'll reboot anyway
+# systemctl start libvirtd.service
+systemctl enable libvirtd.service
+# if ! virsh net-list --all | grep -E 'default(\s+)active'; then
+#   virsh net-start --network default
+# fi
+virsh net-autostart --network default
+
 # Now the computer needs to be rebooted so that the new kernel parameters and modules are loaded
 while true; do
   echo "Your computer needs to be rebooted"

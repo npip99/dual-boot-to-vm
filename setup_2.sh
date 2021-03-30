@@ -51,25 +51,6 @@ dd if=/dev/zero of=efi2 bs=1M count=1
 ./create_raid_array
 
 # ================================
-# Setup virsh internet Service
-# ================================
-
-# Allow virbr0 into qemu
-mkdir -p /etc/qemu
-if [[ -f /etc/qemu/bridge.conf ]]; then
-  echo "/etc/qemu/bridge.conf found. Overwriting it, but a backup can be found at $(pwd)/etc_qemu_bridge.conf.bak"
-  cp /etc/qemu/bridge.conf ./etc_qemu_bridge.conf.bak
-fi
-echo "allow virbr0" >/etc/qemu/bridge.conf
-# Get virbr0 networking device working
-systemctl start libvirtd.service
-systemctl enable libvirtd.service
-if ! virsh net-list --all | grep -E 'default(\s+)active'; then
-  virsh net-start --network default
-fi
-virsh net-autostart --network default
-
-# ================================
 # Format the disk partition table
 # ================================
 
