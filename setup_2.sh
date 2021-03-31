@@ -69,6 +69,7 @@ parted --script /dev/md0 -- \
 
 # Verify the /dev/md0p2 Windows partition integrity inside of the /dev/md0 disk
 # This ensures that we set up our GPT table in a way that preserves the windows partition entirely
+sleep 0.25 # Give time for /dev/md0p{1,2} to be created
 ./verify_raid_array
 
 if [[ "$CREATE_NEW_EFI" == "true" ]]; then

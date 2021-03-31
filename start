@@ -67,6 +67,7 @@ cd "$(dirname $([ -L "$BASH_SOURCE" ] && readlink -f "$BASH_SOURCE" || echo "$BA
 # Setup /dev/md0 if it hasn't been setup already
 if [[ ! -b /dev/md0 ]]; then
   ./create_raid_array
+  sleep 0.25 # Give time for /dev/md0p{1,2} to be created
 fi
 ./verify_raid_array
 
