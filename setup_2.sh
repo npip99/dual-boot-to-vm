@@ -42,7 +42,7 @@ if [[ "$CREATE_NEW_EFI" == "true" ]]; then
   # Reset the GPT and EFI partition when creating a new one
   rm -f efi1
   dd if=/dev/zero of=efi1 bs=1M count=100
-elif [[ ! -f ./ef1 ]]; then
+elif [[ ! -f ./efi1 ]]; then
   # Verify efi1 exists if we're not making a new efi1
   echo "Error: Cannot find efi1 in $(pwd)"
   exit 1
@@ -138,5 +138,5 @@ echo ""
 echo "VM starting..."
 echo "When this VM starts, in order to install the internet drivers, please navigate to the virtio mounted CDROM, and double-click virtio-win-gt-x64.msi to install"
 echo ""
-./start
+./start --no-igpu
 rm ./virtio-win.iso

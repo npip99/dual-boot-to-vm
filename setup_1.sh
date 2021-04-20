@@ -34,14 +34,14 @@ curl -L "https://www.dropbox.com/s/gcg735xravwrztl/dual-boot-to-vm.tar.gz?dl=1" 
 
 PULSEAUDIO_CONFIG="$HOME/.config/pulse/default.pa"
 if [[ -f "$PULSEAUDIO_CONFIG" ]]; then
-  echo "Custom pulseaudio configuration found at $PULSEAUDIO_CONFIG. Please delete it to continue, and then rerun $0"
-  exit 1
-fi
-cat >~/.config/pulse/default.pa <<EOF
+  echo "Custom pulseaudio configuration found at $PULSEAUDIO_CONFIG. Will use that one, but audio might not work"
+else
+  cat >~/.config/pulse/default.pa <<EOF
 .include /etc/pulse/default.pa
 load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/shared-pulse-socket
 EOF
-machinectl shell $SUDO_USER@ /bin/systemctl --user restart pulseaudio.service
+  machinectl shell $SUDO_USER@ /bin/systemctl --user restart pulseaudio.service
+fi
 
 # ================================
 # Update grub file
@@ -54,7 +54,7 @@ GRUB=$(cat /etc/default/grub | grep "GRUB_CMDLINE_LINUX_DEFAULT" | rev | cut -c 
 
 # Creating a grub backup for the uninstallation script and making uninstall.sh executable
 cat /etc/default/grub > etc_default_grub.bak
-chown $SUDO_USER:$SUDO_USER grub_backup.txt
+chown $SUDO_USER:$SUDO_USER etc_default_grub.bak
 
 # After the backup has been created, add intel_iommu=on kvm.ignore_msrs=1 i915.enable_gvt=1
 #  to GRUB variable
